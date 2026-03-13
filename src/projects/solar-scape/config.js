@@ -1,7 +1,9 @@
+const baseUrl = import.meta.env.BASE_URL;
+
 export const solarScapeConfig = {
   title: 'Solar Scape',
-  staticContextModelPath: '/context/Context.3dm',
-  sunVoxelModelPath: '/sun_voxel/Voxel_v2.3dm',
+  staticContextModelPath: `${baseUrl}context/Context.3dm`,
+  sunVoxelModelPath: `${baseUrl}sun_voxel/Voxel_v2.3dm`,
   rhinoLibraryPath: 'https://cdn.jsdelivr.net/npm/rhino3dm@8.4.0/',
   clickSelectionMaxDurationMs: 180,
   clickSelectionMaxMovementPx: 6,
