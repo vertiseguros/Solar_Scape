@@ -6,6 +6,7 @@ import { useSolarScapeScene } from './useSolarScapeScene.js';
 const containerRef = useTemplateRef('container');
 const filtersOpen = ref(false);
 const filtersReady = ref(false);
+const potentialInfoOpen = ref(false);
 
 const configuredFilterBounds = solarScapeConfig.filterBounds ?? {};
 
@@ -32,6 +33,12 @@ const filterFields = computed(() => solarScapeConfig.filterableFields.map((field
   key: field,
   label: solarScapeConfig.fieldLabels[field] ?? field,
 })));
+
+const mainViewFilterKey = 'Potential';
+
+const mainViewFilterField = computed(() => filterFields.value.find((field) => field.key === mainViewFilterKey) ?? null);
+
+const drawerFilterFields = computed(() => filterFields.value.filter((field) => field.key !== mainViewFilterKey));
 
 const selection = reactive({
   status: 'idle',
@@ -91,6 +98,10 @@ function toggleFilters() {
 
 function closeFilters() {
   filtersOpen.value = false;
+}
+
+function togglePotentialInfo() {
+  potentialInfoOpen.value = !potentialInfoOpen.value;
 }
 
 function resetFilters() {
@@ -172,6 +183,64 @@ function formatFilterValue(key, value, step) {
         </section>
       </div>
 
+      <div v-if="mainViewFilterField" class="viewer-bottom-filter">
+        <section class="viewer-bottom-filter__card" :aria-label="`${mainViewFilterField.label} filter`">
+          <div class="viewer-bottom-filter__header">
+            <div class="viewer-bottom-filter__label-row">
+              <label class="viewer-bottom-filter__label">{{ mainViewFilterField.label }}</label>
+              <div class="viewer-bottom-filter__info">
+                <button
+                  type="button"
+                  class="viewer-bottom-filter__info-button"
+                  :aria-expanded="potentialInfoOpen ? 'true' : 'false'"
+                  aria-controls="potential-filter-info"
+                  aria-label="Explain potential"
+                  @click="togglePotentialInfo"
+                >
+                  i
+                </button>
+
+                <div
+                  v-if="potentialInfoOpen"
+                  id="potential-filter-info"
+                  class="viewer-bottom-filter__info-popover"
+                  role="note"
+                >
+                  Ratio between the maximum buildable volume allowed by sun regulations and the existing built volume
+                </div>
+              </div>
+            </div>
+            <div class="range-slider__values">
+              <span>{{ formatFilterValue(mainViewFilterField.key, filterState[mainViewFilterField.key].min, filterBounds[mainViewFilterField.key].step) }}</span>
+              <span>{{ formatFilterValue(mainViewFilterField.key, filterState[mainViewFilterField.key].max, filterBounds[mainViewFilterField.key].step) }}</span>
+            </div>
+          </div>
+
+          <div class="range-slider range-slider--floating">
+            <div class="range-slider__track"></div>
+            <div class="range-slider__active" :style="getSliderStyle(mainViewFilterField.key)"></div>
+            <input
+              class="range-slider__input"
+              type="range"
+              :min="filterBounds[mainViewFilterField.key].min"
+              :max="filterBounds[mainViewFilterField.key].max"
+              :step="filterBounds[mainViewFilterField.key].step"
+              :value="filterState[mainViewFilterField.key].min"
+              @input="updateFilterMin(mainViewFilterField.key, $event)"
+            >
+            <input
+              class="range-slider__input"
+              type="range"
+              :min="filterBounds[mainViewFilterField.key].min"
+              :max="filterBounds[mainViewFilterField.key].max"
+              :step="filterBounds[mainViewFilterField.key].step"
+              :value="filterState[mainViewFilterField.key].max"
+              @input="updateFilterMax(mainViewFilterField.key, $event)"
+            >
+          </div>
+        </section>
+      </div>
+
       <div v-if="filtersOpen" class="filter-overlay" @click.self="closeFilters">
         <aside class="filter-drawer" aria-label="Filters">
           <div class="filter-drawer__header">
@@ -188,7 +257,7 @@ function formatFilterValue(key, value, step) {
           <p class="filter-drawer__copy">Adjust both handles to keep only the values you want visible in the scene.</p>
 
           <div class="filter-list">
-            <section v-for="field in filterFields" :key="field.key" class="filter-group">
+            <section v-for="field in drawerFilterFields" :key="field.key" class="filter-group">
               <div class="filter-group__header">
                 <label class="filter-group__label">{{ field.label }}</label>
                 <div class="range-slider__values">

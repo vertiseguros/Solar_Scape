@@ -34,7 +34,7 @@ export const solarScapeConfig = {
     Max_height: { min: 200, max: 200, step: 1 },
     Occupied_voxels: { min: 0, max: 3500, step: 1 },
     Max_voxels: { min: 0, max: 30000, step: 1 },
-    Potential: { min: 0, max: 200, step: 1 },
+    Potential: { min: 0, max: 150, step: 1 },
   },
   valuePrefixes: {
     Potential: 'x',
