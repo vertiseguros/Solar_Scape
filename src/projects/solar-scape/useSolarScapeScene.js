@@ -509,7 +509,7 @@ export function useSolarScapeScene(options) {
       scene.add(voxelObject);
 
       const framingObjects = staticContextObject ? [staticContextObject, voxelObject] : [voxelObject];
-      fitCameraToSelection(framingObjects);
+      fitCameraToSelection(framingObjects, 0.5);
 
       emitSelection({
         status: 'idle',

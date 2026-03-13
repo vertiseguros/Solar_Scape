@@ -28,7 +28,7 @@ export const solarScapeConfig = {
     Max_height: 'Max height',
     Occupied_voxels: 'Occupied voxels',
     Max_voxels: 'Max voxels',
-    Potential: 'Potential',
+    Potential: 'Sun envelope potential',
   },
   filterBounds: {
     Max_height: { min: 200, max: 200, step: 1 },

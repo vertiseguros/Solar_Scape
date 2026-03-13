@@ -45,6 +45,8 @@ a {
   grid-template-rows: auto minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
+  min-height: 100svh;
+  height: 100dvh;
 }
 
 .app-header {
@@ -183,6 +185,94 @@ a {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.viewer-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  gap: 14px;
+  align-content: center;
+  justify-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at center, rgba(18, 13, 2, 0.26), rgba(6, 10, 15, 0.78));
+  backdrop-filter: blur(6px);
+}
+
+.viewer-loading__sun {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+}
+
+.viewer-loading__core {
+  position: relative;
+  z-index: 1;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff3a6, #ffd84d 58%, #f3b81a 100%);
+  box-shadow:
+    0 0 0 6px rgba(255, 216, 77, 0.16),
+    0 0 24px rgba(255, 216, 77, 0.38);
+}
+
+.viewer-loading__rays {
+  position: absolute;
+  inset: 0;
+  animation: viewer-loading-orbit 3.2s linear infinite;
+}
+
+.viewer-loading__rays::before,
+.viewer-loading__rays::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.viewer-loading__rays::before {
+  width: 8px;
+  height: 8px;
+  background: #ffd84d;
+  box-shadow:
+    0 -36px 0 #ffd84d,
+    0 36px 0 #ffd84d,
+    36px 0 0 #ffd84d,
+    -36px 0 0 #ffd84d;
+}
+
+.viewer-loading__rays::after {
+  width: 6px;
+  height: 6px;
+  background: #ffe88b;
+  box-shadow:
+    25px -25px 0 #ffe88b,
+    -25px -25px 0 #ffe88b,
+    25px 25px 0 #ffe88b,
+    -25px 25px 0 #ffe88b;
+}
+
+.viewer-loading__label {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fff4b8;
+  text-align: center;
+}
+
+@keyframes viewer-loading-orbit {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .filter-trigger {
@@ -645,7 +735,7 @@ a {
   }
 
   .viewer-bottom-filter {
-    bottom: 12px;
+    bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 68px));
     width: min(520px, calc(100vw - 20px));
   }
 

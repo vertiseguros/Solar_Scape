@@ -161,6 +161,14 @@ function formatFilterValue(key, value, step) {
 <template>
   <main class="project-layout project-layout--viewer-only">
     <section ref="container" class="project-layout__viewer">
+      <div v-if="selection.status === 'loading'" class="viewer-loading" role="status" aria-live="polite">
+        <div class="viewer-loading__sun" aria-hidden="true">
+          <span class="viewer-loading__core"></span>
+          <span class="viewer-loading__rays"></span>
+        </div>
+        <p class="viewer-loading__label">{{ selection.message || 'Loading scene...' }}</p>
+      </div>
+
       <button type="button" class="filter-trigger" @click="toggleFilters" aria-label="Open filters">
         <span class="filter-trigger__icon" aria-hidden="true">
           <span></span>
