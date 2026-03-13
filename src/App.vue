@@ -18,10 +18,7 @@ const projectLinks = [
 <template>
   <div class="app-frame">
     <header class="app-header">
-      <div>
-        <p class="app-header__eyebrow">Solar Scape</p>
-        <h1 class="app-header__title">MVRDV NEXT technologies</h1>
-      </div>
+      <h1 class="app-header__title">MVRDV NEXT</h1>
 
       <nav class="app-nav">
         <RouterLink

@@ -320,6 +320,16 @@ export function useSolarScapeScene(options) {
     outlinePass.selectedObjects = meshes;
   }
 
+  function clearSelectionState() {
+    resetSelectedMesh();
+    emitSelection({
+      status: 'idle',
+      metadata: null,
+      voxelPath: null,
+      message: '',
+    });
+  }
+
   function load3dm(path) {
     return new Promise((resolve, reject) => {
       loader.load(path, resolve, undefined, reject);
@@ -415,6 +425,7 @@ export function useSolarScapeScene(options) {
     const hits = raycaster.intersectObject(voxelObject, true).filter((hit) => hit.object.visible);
 
     if (!hits.length) {
+      clearSelectionState();
       return;
     }
 

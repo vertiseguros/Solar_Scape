@@ -159,22 +159,16 @@ function formatFilterValue(key, value, step) {
         <span class="filter-trigger__label">Filters</span>
       </button>
 
-      <div class="viewer-note">
+      <div v-if="selection.status === 'ready'" class="viewer-note">
         <section class="viewer-note__section">
           <h2 class="viewer-note__title">Solar envelope info</h2>
 
-          <template v-if="selection.status === 'ready'">
-            <dl class="metadata-list metadata-list--compact">
-              <div v-for="field in metadataFields" :key="field.key" class="metadata-list__row">
-                <dt>{{ field.label }}</dt>
-                <dd>{{ formatDisplayValue(field.key, selection.metadata?.[field.key]) }}</dd>
-              </div>
-            </dl>
-          </template>
-
-          <template v-else>
-            <p class="viewer-note__copy">{{ selection.message || 'Click to inspect the solar envelope information.' }}</p>
-          </template>
+          <dl class="metadata-list metadata-list--compact">
+            <div v-for="field in metadataFields" :key="field.key" class="metadata-list__row">
+              <dt>{{ field.label }}</dt>
+              <dd>{{ formatDisplayValue(field.key, selection.metadata?.[field.key]) }}</dd>
+            </div>
+          </dl>
         </section>
       </div>
 
