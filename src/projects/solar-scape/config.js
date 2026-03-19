@@ -26,9 +26,9 @@ export const solarScapeConfig = {
   fieldLabels: {
     Plot: 'Plot',
     Max_height: 'Max height',
-    Occupied_voxels: 'Occupied voxels',
-    Max_voxels: 'Max voxels',
-    Potential: 'Sun envelope potential',
+    Occupied_voxels: 'Current volume',
+    Max_voxels: 'Max volume',
+    Potential: 'Buildable potential',
   },
   filterBounds: {
     Max_height: { min: 200, max: 200, step: 1 },
