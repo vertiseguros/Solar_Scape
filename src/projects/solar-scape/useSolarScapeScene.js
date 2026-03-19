@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Rhino3dmLoader } from 'three/addons/loaders/3DMLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -41,44 +42,208 @@ export function useSolarScapeScene(options) {
     opacity: 0.35,
     transparent: true,
   };
+  const sunState = {
+    timePercent: 50,
+  };
 
   let animationFrameId = 0;
   let resizeObserver;
   let scene;
   let camera;
+  let perspectiveCamera;
+  let orthographicCamera;
   let renderer;
   let composer;
+  let renderPass;
+  let ssaoPass;
   let outlinePass;
   let fxaaPass;
   let controls;
+  let sunLight;
+  let sunLightTarget;
+  let fillLight;
+  let hemiLight;
+  let ambientLight;
   let staticContextObject = null;
   let voxelObject = null;
   let sizeRetryFrameId = 0;
   let pointerState = null;
   let initialFramingObjects = [];
+  let orthographicHalfHeight = 100;
+  let currentViewMode = 'perspective';
 
   function emitSelection(payload) {
     onSelectionChange(payload);
+  }
+
+  function createSkyBackground() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 512;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return new THREE.Color('#dfeaf4');
+    }
+
+    const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#a9d6ff');
+    gradient.addColorStop(0.45, '#d7ecff');
+    gradient.addColorStop(1, '#f4f5f2');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }
+
+  function computeSolarDirection(timePercent) {
+    const latitude = THREE.MathUtils.degToRad(51.9244);
+    const dayOfYear = 80;
+    const declination = THREE.MathUtils.degToRad(23.44 * Math.sin((2 * Math.PI * (dayOfYear - 81)) / 365));
+    const solarHour = 6 + ((timePercent / 100) * 12);
+    const hourAngle = THREE.MathUtils.degToRad((solarHour - 12) * 15);
+
+    const east = -Math.cos(declination) * Math.sin(hourAngle);
+    const north = (Math.sin(declination) * Math.cos(latitude)) - (Math.cos(declination) * Math.sin(latitude) * Math.cos(hourAngle));
+    const up = (Math.sin(declination) * Math.sin(latitude)) + (Math.cos(declination) * Math.cos(latitude) * Math.cos(hourAngle));
+
+    return {
+      direction: new THREE.Vector3(east, north, Math.max(up, 0.05)).normalize(),
+      altitude: up,
+    };
+  }
+
+  function applySunSettings() {
+    if (!sunLight || !sunLightTarget || !initialFramingObjects.length) {
+      return;
+    }
+
+    box.makeEmpty();
+    initialFramingObjects.forEach((object) => box.expandByObject(object));
+
+    if (box.isEmpty()) {
+      return;
+    }
+
+    box.getSize(size);
+    box.getCenter(center);
+
+    const { direction, altitude } = computeSolarDirection(sunState.timePercent);
+    const maxPlan = Math.max(size.x, size.y, 1);
+    const lightDistance = Math.max(maxPlan * 2.6, size.z * 4, 220);
+    const shadowSpan = Math.max(maxPlan * 1.25, 140);
+    const shadowDepth = Math.max(lightDistance + (size.z * 8), 900);
+    const daylightFactor = THREE.MathUtils.clamp((altitude + 0.05) / 0.85, 0.18, 1);
+
+    sunLight.position.copy(center).addScaledVector(direction, lightDistance);
+    sunLightTarget.position.copy(center);
+    sunLight.intensity = 2.6 * daylightFactor;
+    sunLight.castShadow = true;
+    sunLight.shadow.camera.left = -shadowSpan;
+    sunLight.shadow.camera.right = shadowSpan;
+    sunLight.shadow.camera.top = shadowSpan;
+    sunLight.shadow.camera.bottom = -shadowSpan;
+    sunLight.shadow.camera.near = 0.1;
+    sunLight.shadow.camera.far = shadowDepth;
+    sunLight.shadow.bias = -0.00002;
+    sunLight.shadow.normalBias = 0.01;
+    sunLight.shadow.camera.updateProjectionMatrix();
+    sunLight.shadow.needsUpdate = true;
+
+    if (fillLight) {
+      fillLight.intensity = 0.5 + (0.7 * daylightFactor);
+    }
+
+    if (hemiLight) {
+      hemiLight.intensity = 0.35 + (0.35 * daylightFactor);
+    }
+
+    if (ambientLight) {
+      ambientLight.intensity = 0.08 + (0.14 * daylightFactor);
+    }
+  }
+
+  function createControls({ allowRotate }) {
+    const nextControls = new OrbitControls(camera, renderer.domElement);
+    nextControls.enableDamping = true;
+    nextControls.dampingFactor = 0.08;
+    nextControls.enablePan = true;
+    nextControls.screenSpacePanning = true;
+    nextControls.enableRotate = allowRotate;
+    nextControls.mouseButtons.LEFT = allowRotate ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
+    nextControls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+    nextControls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+    return nextControls;
+  }
+
+  function getViewportAspect() {
+    const container = containerRef.value;
+    const width = container?.clientWidth ?? 1;
+    const height = container?.clientHeight ?? 1;
+    return width / height;
+  }
+
+  function updateOrthographicFrustum(width, height) {
+    const aspect = width / height;
+    orthographicCamera.left = -orthographicHalfHeight * aspect;
+    orthographicCamera.right = orthographicHalfHeight * aspect;
+    orthographicCamera.top = orthographicHalfHeight;
+    orthographicCamera.bottom = -orthographicHalfHeight;
+    orthographicCamera.updateProjectionMatrix();
+  }
+
+  function setActiveCamera(nextCamera, viewMode) {
+    const previousTarget = controls?.target?.clone() ?? center.clone();
+
+    camera = nextCamera;
+    currentViewMode = viewMode;
+    renderPass.camera = camera;
+    if (ssaoPass) {
+      ssaoPass.camera = camera;
+    }
+    outlinePass.renderCamera = camera;
+
+    controls?.dispose();
+    controls = createControls({ allowRotate: viewMode !== 'top-orthographic' });
+    controls.target.copy(previousTarget);
+    controls.update();
+
+    setSize();
   }
 
   function createScene() {
     THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color('#f1f1f1');
+    scene.background = createSkyBackground();
 
-    camera = new THREE.PerspectiveCamera(40, 1, 0.1, 3000);
-    camera.position.set(-220, -190, 150);
-    camera.up.copy(defaultCameraUp);
+    perspectiveCamera = new THREE.PerspectiveCamera(40, 1, 0.1, 3000);
+    perspectiveCamera.position.set(-220, -190, 150);
+    perspectiveCamera.up.copy(defaultCameraUp);
+
+    orthographicCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 3000);
+    orthographicCamera.up.set(0, 1, 0);
+
+    camera = perspectiveCamera;
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.BasicShadowMap;
 
     composer = new EffectComposer(renderer);
 
-    const renderPass = new RenderPass(scene, camera);
+    renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
+
+    ssaoPass = new SSAOPass(scene, camera, 1, 1);
+    ssaoPass.kernelRadius = 16;
+    ssaoPass.minDistance = 0.005;
+    ssaoPass.maxDistance = 0.1;
+    composer.addPass(ssaoPass);
 
     outlinePass = new OutlinePass(new THREE.Vector2(1, 1), scene, camera);
     outlinePass.visibleEdgeColor.set('#ffe36e');
@@ -94,19 +259,22 @@ export function useSolarScapeScene(options) {
 
     composer.addPass(new OutputPass());
 
-    controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
+    controls = createControls({ allowRotate: true });
 
-    const keyLight = new THREE.DirectionalLight('#fff3d8', 3);
-    keyLight.position.set(-80, -60, 150);
+    sunLight = new THREE.DirectionalLight('#ffffff', 2.4);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(4096, 4096);
+    sunLightTarget = new THREE.Object3D();
+    sunLight.target = sunLightTarget;
 
-    const fillLight = new THREE.DirectionalLight('#94b6ff', 1.4);
+    fillLight = new THREE.DirectionalLight('#ffffff', 1.2);
     fillLight.position.set(130, 80, 110);
 
-    const ambientLight = new THREE.AmbientLight('#f1f5ff', 0.8);
+    hemiLight = new THREE.HemisphereLight('#ffffff', '#f2f2f2', 0.6);
 
-    scene.add(keyLight, fillLight, ambientLight);
+    ambientLight = new THREE.AmbientLight('#ffffff', 0.14);
+
+    scene.add(sunLight, sunLightTarget, fillLight, hemiLight, ambientLight);
   }
 
   function setSize() {
@@ -122,12 +290,14 @@ export function useSolarScapeScene(options) {
       return false;
     }
 
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
+    perspectiveCamera.aspect = width / height;
+    perspectiveCamera.updateProjectionMatrix();
+    updateOrthographicFrustum(width, height);
     renderer.setSize(width, height, false);
     composer.setSize(width, height);
 
     const pixelRatio = renderer.getPixelRatio();
+    ssaoPass?.setSize(width * pixelRatio, height * pixelRatio);
     outlinePass.setSize(width * pixelRatio, height * pixelRatio);
     fxaaPass.material.uniforms.resolution.value.set(
       1 / (width * pixelRatio),
@@ -163,6 +333,24 @@ export function useSolarScapeScene(options) {
     box.getSize(size);
     box.getCenter(center);
 
+    if (currentViewMode === 'top-orthographic') {
+      const aspect = getViewportAspect();
+      const maxPlanSize = Math.max(size.y, size.x / aspect, 1);
+      const distance = Math.max(size.z * 4, maxPlanSize * 3, 120);
+
+      orthographicHalfHeight = (maxPlanSize * fitOffset) / 2;
+      updateOrthographicFrustum(aspect, 1);
+      orthographicCamera.up.set(0, 1, 0);
+      orthographicCamera.position.set(center.x, center.y, center.z + distance);
+      orthographicCamera.near = Math.max(distance / 200, 0.1);
+      orthographicCamera.far = distance * 20;
+      orthographicCamera.updateProjectionMatrix();
+
+      controls.target.copy(center);
+      controls.update();
+      return;
+    }
+
     const maxSize = Math.max(size.x, size.y, size.z);
     const fitHeightDistance = maxSize / (2 * Math.atan((Math.PI * camera.fov) / 360));
     const fitWidthDistance = fitHeightDistance / camera.aspect;
@@ -181,9 +369,28 @@ export function useSolarScapeScene(options) {
   }
 
   function updateVoxelMaterial(material) {
+    if (material?.color?.isColor) {
+      material.userData.originalVoxelColor ??= material.color.clone();
+      material.color.copy(material.userData.originalVoxelColor);
+    }
+
+    if (material?.emissive?.isColor && material.userData.originalVoxelColor) {
+      material.emissive.copy(material.userData.originalVoxelColor).multiplyScalar(0.12);
+      material.emissiveIntensity = 0.35;
+    }
+
+    if ('metalness' in material) {
+      material.metalness = 0;
+    }
+
+    if ('roughness' in material) {
+      material.roughness = Math.min(material.roughness ?? 1, 0.7);
+    }
+
     material.transparent = voxelDisplayState.transparent;
     material.opacity = voxelDisplayState.opacity;
-    material.depthWrite = !voxelDisplayState.transparent;
+    material.depthWrite = true;
+    material.depthTest = true;
     material.needsUpdate = true;
   }
 
@@ -210,6 +417,9 @@ export function useSolarScapeScene(options) {
     if (!mesh.isMesh) {
       return;
     }
+
+    mesh.castShadow = true;
+    mesh.receiveShadow = false;
 
     if (Array.isArray(mesh.material)) {
       mesh.material = mesh.material.map((material) => material.clone());
@@ -308,9 +518,22 @@ export function useSolarScapeScene(options) {
     });
   }
 
-  function tintLayerMeshes(rootObject, layerName, colorValue) {
+  function getLayerForMesh(rootObject, mesh) {
     const layers = rootObject?.userData?.layers;
-    if (!rootObject || !Array.isArray(layers) || !layerName) {
+    if (!rootObject || !Array.isArray(layers) || !mesh?.isMesh) {
+      return null;
+    }
+
+    const layerIndex = mesh.userData?.attributes?.layerIndex;
+    if (typeof layerIndex !== 'number') {
+      return null;
+    }
+
+    return layers[layerIndex] ?? null;
+  }
+
+  function tintLayerMeshes(rootObject, layerName, colorValue) {
+    if (!rootObject || !layerName) {
       return;
     }
 
@@ -321,12 +544,7 @@ export function useSolarScapeScene(options) {
         return;
       }
 
-      const layerIndex = child.userData?.attributes?.layerIndex;
-      if (typeof layerIndex !== 'number') {
-        return;
-      }
-
-      const layer = layers[layerIndex];
+      const layer = getLayerForMesh(rootObject, child);
       if (!layer || layer.name !== layerName) {
         return;
       }
@@ -342,6 +560,58 @@ export function useSolarScapeScene(options) {
 
       child.material = child.material.clone();
       child.material.color.copy(targetColor);
+    });
+  }
+
+  function applyContextLayerMaterial(rootObject, layerName) {
+    if (!rootObject || !layerName) {
+      return;
+    }
+
+    rootObject.traverse((child) => {
+      if (!child.isMesh) {
+        return;
+      }
+
+      const layer = getLayerForMesh(rootObject, child);
+      if (!layer || layer.name !== layerName) {
+        return;
+      }
+
+      const createMaterial = () => new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.9,
+        metalness: 0,
+      });
+
+      if (Array.isArray(child.material)) {
+        child.material = child.material.map(() => createMaterial());
+        return;
+      }
+
+      child.material = createMaterial();
+    });
+  }
+
+  function setContextShadowState(rootObject) {
+    if (!rootObject) {
+      return;
+    }
+
+    rootObject.traverse((child) => {
+      if (!child.isMesh) {
+        return;
+      }
+
+      child.castShadow = false;
+      child.receiveShadow = true;
+
+      if (Array.isArray(child.material)) {
+        child.material = child.material.map((material) => material.clone());
+        return;
+      }
+
+      child.material = child.material.clone();
     });
   }
 
@@ -379,26 +649,8 @@ export function useSolarScapeScene(options) {
       return;
     }
 
-    box.makeEmpty();
-    initialFramingObjects.forEach((object) => box.expandByObject(object));
-
-    if (box.isEmpty()) {
-      return;
-    }
-
-    box.getSize(size);
-    box.getCenter(center);
-
-    const maxSize = Math.max(size.x, size.y, size.z);
-    const distance = Math.max(maxSize * 0.95, 120);
-
-    controls.target.copy(center);
-    camera.up.set(0, 1, 0);
-    camera.position.set(center.x, center.y, center.z + distance);
-    camera.near = Math.max(distance / 100, 0.1);
-    camera.far = distance * 100;
-    camera.updateProjectionMatrix();
-    controls.update();
+    setActiveCamera(orthographicCamera, 'top-orthographic');
+    fitCameraToSelection(initialFramingObjects, 1.1);
   }
 
   function resetView() {
@@ -406,13 +658,22 @@ export function useSolarScapeScene(options) {
       return;
     }
 
+    setActiveCamera(perspectiveCamera, 'perspective');
     fitCameraToSelection(initialFramingObjects, 0.5);
   }
 
-  function setVoxelTransparency(enabled) {
-    voxelDisplayState.transparent = enabled;
-    voxelDisplayState.opacity = enabled ? 0.35 : 0.92;
+  function setVoxelTransparency(transparencyPercent) {
+    const normalizedTransparency = THREE.MathUtils.clamp(Number(transparencyPercent) || 0, 0, 100);
+    const opacity = 1 - ((normalizedTransparency / 100) * 0.95);
+
+    voxelDisplayState.transparent = normalizedTransparency > 0;
+    voxelDisplayState.opacity = opacity;
     applyVoxelMaterialState();
+  }
+
+  function setSunTime(timePercent) {
+    sunState.timePercent = THREE.MathUtils.clamp(Number(timePercent) || 0, 0, 100);
+    applySunSettings();
   }
 
   function getPointerTravel(event) {
@@ -565,6 +826,8 @@ export function useSolarScapeScene(options) {
 
       [staticContextObject, voxelObject] = sceneAssets;
 
+      setContextShadowState(staticContextObject);
+      applyContextLayerMaterial(staticContextObject, 'Context');
       tintLayerMeshes(staticContextObject, 'Sunspots', '#ffd84d');
       voxelObject.traverse((child) => {
         decorateVoxelMesh(child);
@@ -584,6 +847,7 @@ export function useSolarScapeScene(options) {
       scene.add(voxelObject);
 
       initialFramingObjects = staticContextObject ? [staticContextObject, voxelObject] : [voxelObject];
+      applySunSettings();
       fitCameraToSelection(initialFramingObjects, 0.5);
 
       emitSelection({
@@ -670,6 +934,7 @@ export function useSolarScapeScene(options) {
 
   return {
     resetView,
+    setSunTime,
     setTopView,
     setVoxelFilters,
     setVoxelTransparency,

@@ -4,7 +4,7 @@ export const solarScapeConfig = {
   title: 'Solar Scape',
 /*   staticContextModelPath: `${baseUrl}context/Context.3dm`, */
   staticContextModelPath: `${baseUrl}context/260311 context.3dm`,
-  sunVoxelModelPath: `${baseUrl}sun_voxel/Voxel_v2.3dm`,
+  sunVoxelModelPath: `${baseUrl}sun_voxel/Voxel_v3.3dm`,
   rhinoLibraryPath: 'https://cdn.jsdelivr.net/npm/rhino3dm@8.4.0/',
   clickSelectionMaxDurationMs: 180,
   clickSelectionMaxMovementPx: 6,

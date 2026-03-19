@@ -7,6 +7,11 @@ const containerRef = useTemplateRef('container');
 const filtersOpen = ref(false);
 const filtersReady = ref(false);
 const potentialInfoOpen = ref(false);
+const voxelTransparency = ref(65);
+const transparencyOpen = ref(false);
+const activeViewMode = ref('perspective');
+const sunSettingsOpen = ref(false);
+const sunTime = ref(50);
 
 const configuredFilterBounds = solarScapeConfig.filterBounds ?? {};
 
@@ -100,8 +105,60 @@ function closeFilters() {
   filtersOpen.value = false;
 }
 
+function toggleTransparency() {
+  transparencyOpen.value = !transparencyOpen.value;
+}
+
+function toggleSunSettings() {
+  sunSettingsOpen.value = !sunSettingsOpen.value;
+}
+
 function togglePotentialInfo() {
   potentialInfoOpen.value = !potentialInfoOpen.value;
+}
+
+function setTopView() {
+  sceneController.setTopView();
+  activeViewMode.value = 'top';
+}
+
+function resetView() {
+  sceneController.resetView();
+  activeViewMode.value = 'perspective';
+}
+
+function toggleViewMode() {
+  if (activeViewMode.value === 'top') {
+    sceneController.resetView();
+    activeViewMode.value = 'perspective';
+    return;
+  }
+
+  sceneController.setTopView();
+  activeViewMode.value = 'top';
+}
+
+function updateVoxelTransparency(event) {
+  const nextValue = Number(event.target.value);
+  voxelTransparency.value = nextValue;
+  sceneController.setVoxelTransparency(nextValue);
+}
+
+function updateSunTime(event) {
+  const nextValue = Number(event.target.value);
+  sunTime.value = nextValue;
+  sceneController.setSunTime(nextValue);
+}
+
+function formatSunTime(value) {
+  const daylightHours = 12;
+  const hourValue = 6 + ((value / 100) * daylightHours);
+  const hours = Math.floor(hourValue);
+  const minutes = Math.round((hourValue - hours) * 60);
+  const adjustedHours = minutes === 60 ? hours + 1 : hours;
+  const adjustedMinutes = minutes === 60 ? 0 : minutes;
+
+  return `${String(adjustedHours).padStart(2, '0')}:${String(adjustedMinutes).padStart(2, '0')}`;
 }
 
 function resetFilters() {
@@ -177,6 +234,81 @@ function formatFilterValue(key, value, step) {
         </span>
         <span class="filter-trigger__label">Filters</span>
       </button>
+
+      <section class="scene-controls" aria-label="Scene controls">
+        <button
+          type="button"
+          class="scene-controls__button scene-controls__button--icon"
+          :class="{ 'scene-controls__button--active': transparencyOpen }"
+          aria-label="Transparency"
+          :aria-expanded="transparencyOpen ? 'true' : 'false'"
+          aria-controls="scene-transparency-panel"
+          @click="toggleTransparency"
+        >
+          <img class="scene-controls__icon-image" src="/icons/transparency.svg" alt="" width="24" height="24">
+        </button>
+        <button
+          type="button"
+          class="scene-controls__button scene-controls__button--icon"
+          :class="{ 'scene-controls__button--active': activeViewMode === 'top' }"
+          :aria-label="activeViewMode === 'top' ? 'Switch to perspective view' : 'Switch to top view'"
+          @click="toggleViewMode"
+        >
+          <img class="scene-controls__icon-image" src="/icons/view.svg" alt="" width="24" height="24">
+        </button>
+        <button type="button" class="scene-controls__button scene-controls__button--icon" aria-label="Reset 3D view" @click="resetView">
+          <img class="scene-controls__icon-image" src="/icons/reset.svg" alt="" width="24" height="24">
+        </button>
+        <button
+          type="button"
+          class="scene-controls__button scene-controls__button--icon"
+          :class="{ 'scene-controls__button--active': sunSettingsOpen }"
+          aria-label="Sun settings"
+          :aria-expanded="sunSettingsOpen ? 'true' : 'false'"
+          aria-controls="scene-sun-panel"
+          @click="toggleSunSettings"
+        >
+          <img class="scene-controls__icon-image" src="/icons/sun.svg" alt="" width="24" height="24">
+        </button>
+
+        <div v-if="transparencyOpen" id="scene-transparency-panel" class="scene-controls__panel">
+          <div class="scene-controls__header">
+            <label class="scene-controls__label" for="voxel-transparency">Voxel transparency</label>
+            <span class="scene-controls__value">{{ voxelTransparency }}%</span>
+          </div>
+
+          <input
+            id="voxel-transparency"
+            class="scene-controls__slider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            :value="voxelTransparency"
+            @input="updateVoxelTransparency"
+          >
+        </div>
+
+        <div v-if="sunSettingsOpen" id="scene-sun-panel" class="scene-controls__panel scene-controls__panel--sun">
+          <div class="scene-controls__header">
+            <label class="scene-controls__label" for="scene-sun-time">Sun time</label>
+            <span class="scene-controls__value">{{ formatSunTime(sunTime) }}</span>
+          </div>
+
+          <input
+            id="scene-sun-time"
+            class="scene-controls__slider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            :value="sunTime"
+            @input="updateSunTime"
+          >
+
+          <p class="scene-controls__caption">21 March, Rotterdam</p>
+        </div>
+      </section>
 
       <div v-if="selection.status === 'ready'" class="viewer-note">
         <section class="viewer-note__section">
