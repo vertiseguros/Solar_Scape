@@ -32,10 +32,15 @@ export function useSolarScapeScene(options) {
   const size = new THREE.Vector3();
   const center = new THREE.Vector3();
   const box = new THREE.Box3();
+  const defaultCameraUp = new THREE.Vector3(0, 0, 1);
   const voxelMeshMetadata = new Map();
   const voxelFilters = Object.fromEntries(
     (config.filterableFields ?? []).map((field) => [field, { min: null, max: null }]),
   );
+  const voxelDisplayState = {
+    opacity: 0.35,
+    transparent: true,
+  };
 
   let animationFrameId = 0;
   let resizeObserver;
@@ -50,6 +55,7 @@ export function useSolarScapeScene(options) {
   let voxelObject = null;
   let sizeRetryFrameId = 0;
   let pointerState = null;
+  let initialFramingObjects = [];
 
   function emitSelection(payload) {
     onSelectionChange(payload);
@@ -63,6 +69,7 @@ export function useSolarScapeScene(options) {
 
     camera = new THREE.PerspectiveCamera(40, 1, 0.1, 3000);
     camera.position.set(-220, -190, 150);
+    camera.up.copy(defaultCameraUp);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
@@ -163,6 +170,7 @@ export function useSolarScapeScene(options) {
 
     const direction = controls.target.clone().sub(camera.position).normalize().multiplyScalar(distance);
 
+    camera.up.copy(defaultCameraUp);
     controls.target.copy(center);
 
     camera.near = Math.max(distance / 100, 0.1);
@@ -172,6 +180,32 @@ export function useSolarScapeScene(options) {
     controls.update();
   }
 
+  function updateVoxelMaterial(material) {
+    material.transparent = voxelDisplayState.transparent;
+    material.opacity = voxelDisplayState.opacity;
+    material.depthWrite = !voxelDisplayState.transparent;
+    material.needsUpdate = true;
+  }
+
+  function applyVoxelMaterialState(root = voxelObject) {
+    if (!root) {
+      return;
+    }
+
+    root.traverse((child) => {
+      if (!child.isMesh) {
+        return;
+      }
+
+      if (Array.isArray(child.material)) {
+        child.material.forEach(updateVoxelMaterial);
+        return;
+      }
+
+      updateVoxelMaterial(child.material);
+    });
+  }
+
   function decorateVoxelMesh(mesh) {
     if (!mesh.isMesh) {
       return;
@@ -179,12 +213,12 @@ export function useSolarScapeScene(options) {
 
     if (Array.isArray(mesh.material)) {
       mesh.material = mesh.material.map((material) => material.clone());
+      mesh.material.forEach(updateVoxelMaterial);
       return;
     }
 
     mesh.material = mesh.material.clone();
-    mesh.material.transparent = true;
-    mesh.material.opacity = 0.35;
+    updateVoxelMaterial(mesh.material);
   }
 
   function normalizeFilterValue(value) {
@@ -338,6 +372,47 @@ export function useSolarScapeScene(options) {
 
   function resetPointerState() {
     pointerState = null;
+  }
+
+  function setTopView() {
+    if (!initialFramingObjects.length) {
+      return;
+    }
+
+    box.makeEmpty();
+    initialFramingObjects.forEach((object) => box.expandByObject(object));
+
+    if (box.isEmpty()) {
+      return;
+    }
+
+    box.getSize(size);
+    box.getCenter(center);
+
+    const maxSize = Math.max(size.x, size.y, size.z);
+    const distance = Math.max(maxSize * 0.95, 120);
+
+    controls.target.copy(center);
+    camera.up.set(0, 1, 0);
+    camera.position.set(center.x, center.y, center.z + distance);
+    camera.near = Math.max(distance / 100, 0.1);
+    camera.far = distance * 100;
+    camera.updateProjectionMatrix();
+    controls.update();
+  }
+
+  function resetView() {
+    if (!initialFramingObjects.length) {
+      return;
+    }
+
+    fitCameraToSelection(initialFramingObjects, 0.5);
+  }
+
+  function setVoxelTransparency(enabled) {
+    voxelDisplayState.transparent = enabled;
+    voxelDisplayState.opacity = enabled ? 0.35 : 0.92;
+    applyVoxelMaterialState();
   }
 
   function getPointerTravel(event) {
@@ -508,8 +583,8 @@ export function useSolarScapeScene(options) {
       }
       scene.add(voxelObject);
 
-      const framingObjects = staticContextObject ? [staticContextObject, voxelObject] : [voxelObject];
-      fitCameraToSelection(framingObjects, 0.5);
+      initialFramingObjects = staticContextObject ? [staticContextObject, voxelObject] : [voxelObject];
+      fitCameraToSelection(initialFramingObjects, 0.5);
 
       emitSelection({
         status: 'idle',
@@ -594,6 +669,9 @@ export function useSolarScapeScene(options) {
   });
 
   return {
+    resetView,
+    setTopView,
     setVoxelFilters,
+    setVoxelTransparency,
   };
 }
